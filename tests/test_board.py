@@ -3,6 +3,8 @@ import random
 import pytest
 
 from board import (
+    count_empty,
+    evaluate,
     from_grid,
     get_cell,
     is_game_over,
@@ -130,3 +132,49 @@ def test_game_over_false_with_merge():
         [8192, 16384, 2, 2],
     ]
     assert is_game_over(from_grid(grid)) is False
+
+
+def test_evaluate_deterministic():
+    b = from_grid([[2, 4, 0, 0], [0, 0, 8, 0], [16, 0, 0, 2], [0, 0, 0, 0]])
+    assert evaluate(b) == evaluate(b)
+
+
+def test_evaluate_prefers_more_empty():
+    sparse = _board_from_log_grid(
+        [[1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    )
+    dense = _board_from_log_grid(
+        [[1, 2, 3, 4], [5, 1, 2, 3], [4, 5, 1, 2], [3, 4, 0, 0]]
+    )
+    assert count_empty(sparse) == 12
+    assert count_empty(dense) == 2
+    assert evaluate(sparse) > evaluate(dense)
+
+
+def test_evaluate_prefers_monotonic_row():
+    mono = _board_from_log_grid(_pack_row_log([8, 4, 2, 0]))
+    scram = _board_from_log_grid(_pack_row_log([2, 8, 0, 4]))
+    assert evaluate(mono) > evaluate(scram)
+
+
+def test_evaluate_prefers_max_in_corner():
+    corner = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    center = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    corner[0][0] = 10
+    corner[0][1] = 5
+    corner[1][0] = 4
+    center[1][1] = 10
+    center[0][1] = 5
+    center[1][0] = 4
+    assert evaluate(_board_from_log_grid(corner)) > evaluate(_board_from_log_grid(center))
+
+
+def test_table_build_under_3_seconds():
+    import importlib
+    import time
+
+    import board as board_mod
+
+    start = time.perf_counter()
+    importlib.reload(board_mod)
+    assert time.perf_counter() - start < 3.0

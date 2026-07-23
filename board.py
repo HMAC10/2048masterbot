@@ -44,6 +44,69 @@ def _build_tables() -> None:
 
 _build_tables()
 
+W_EMPTY = 270.0
+W_MERGES = 700.0
+W_SUM = 11.0
+W_MONO = 47.0
+P_SUM = 3.5
+P_MONO = 4.0
+BASE = 200000.0
+
+HEUR: list[float] = [0.0] * 65536
+
+
+def _heur_for_line(line: list[int]) -> float:
+    h = BASE
+    h += W_EMPTY * sum(1 for rank in line if rank == 0)
+
+    counter = 0
+    merges = 0
+    prev = 0
+    for rank in line:
+        if rank != 0:
+            if prev == rank:
+                counter += 1
+            elif counter > 0:
+                merges += 1 + counter
+                counter = 0
+            prev = rank
+    if counter > 0:
+        merges += 1 + counter
+    h += W_MERGES * merges
+
+    # 0 ** P_SUM is 0.0; empty cells add nothing to SUM
+    h -= W_SUM * sum(rank ** P_SUM for rank in line)
+
+    mono_left = 0.0
+    mono_right = 0.0
+    for i in range(1, 4):
+        a = line[i - 1] ** P_MONO
+        b = line[i] ** P_MONO
+        if line[i - 1] > line[i]:
+            mono_left += a - b
+        else:
+            mono_right += b - a
+    h -= W_MONO * min(mono_left, mono_right)
+    return h
+
+
+def _build_heur() -> None:
+    for i in range(65536):
+        HEUR[i] = _heur_for_line(_unpack(i))
+
+
+_build_heur()
+
+
+def evaluate(board: int) -> float:
+    total = 0.0
+    for r in range(4):
+        total += HEUR[_get_row(board, r)]
+    t = transpose(board)
+    for r in range(4):
+        total += HEUR[_get_row(t, r)]
+    return total
+
 
 def _row_shift(r: int) -> int:
     return 48 - r * 16
