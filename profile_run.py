@@ -1,4 +1,4 @@
-"""Profile 40 best_move calls on a mid-game board (depth forced to 2)."""
+"""Profile 40 best_move calls on a mid-game board (depth capped at 2)."""
 from __future__ import annotations
 
 import cProfile
@@ -6,13 +6,8 @@ import pstats
 import random
 from io import StringIO
 
-import solver
 from board import is_game_over, move, spawn_tile
 from solver import best_move
-
-solver.DEPTH_SHALLOW = 2
-solver.DEPTH_MID = 2
-solver.DEPTH_DEEP = 2
 
 rng = random.Random(1)
 board = 0
@@ -20,7 +15,7 @@ board = spawn_tile(board, rng)
 board = spawn_tile(board, rng)
 
 for _ in range(150):
-    d = best_move(board)
+    d = best_move(board, budget_ms=60_000, max_depth=2)
     if d == -1:
         break
     board, _ = move(board, d)
@@ -31,7 +26,7 @@ for _ in range(150):
 profiler = cProfile.Profile()
 profiler.enable()
 for _ in range(40):
-    best_move(board)
+    best_move(board, budget_ms=60_000, max_depth=2)
 profiler.disable()
 
 buf = StringIO()

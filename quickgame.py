@@ -1,16 +1,11 @@
-"""One offline game with search depth forced to 2. Does not edit solver.py."""
+"""One offline game with search depth capped at 2."""
 from __future__ import annotations
 
 import random
 import time
 
-import solver
 from board import is_game_over, max_tile, move, spawn_tile
 from solver import best_move
-
-solver.DEPTH_SHALLOW = 2
-solver.DEPTH_MID = 2
-solver.DEPTH_DEEP = 2
 
 rng = random.Random(0)
 board = 0
@@ -21,7 +16,7 @@ moves = 0
 t0 = time.perf_counter()
 
 while True:
-    d = best_move(board)
+    d = best_move(board, budget_ms=60_000, max_depth=2)
     if d == -1:
         break
     board, gained = move(board, d)

@@ -6,22 +6,25 @@ import random
 import statistics
 import time
 
+import solver
 from board import is_game_over, max_tile, move, spawn_tile
 from solver import best_move
 
 
-def play_one_game(seed: int) -> dict:
+def play_one_game(seed: int, budget_ms: int) -> dict:
     rng = random.Random(seed)
     board = 0
     board = spawn_tile(board, rng)
     board = spawn_tile(board, rng)
     score = 0
     moves = 0
+    depth_sum = 0
     t0 = time.perf_counter()
     while True:
-        d = best_move(board)
+        d = best_move(board, budget_ms=budget_ms)
         if d == -1:
             break
+        depth_sum += solver.last_depth
         board, gained = move(board, d)
         score += gained
         moves += 1
@@ -35,6 +38,7 @@ def play_one_game(seed: int) -> dict:
         "max_tile": max_tile(board),
         "moves": moves,
         "elapsed_seconds": elapsed,
+        "avg_depth": depth_sum / moves if moves else 0.0,
     }
 
 
@@ -42,19 +46,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Offline 2048 expectimax benchmark")
     parser.add_argument("--games", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--budget-ms", type=int, default=200)
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
     results = []
     for i in range(args.games):
-        r = play_one_game(args.seed + i)
+        r = play_one_game(args.seed + i, args.budget_ms)
         results.append(r)
         if not args.quiet:
             mps = r["moves"] / r["elapsed_seconds"] if r["elapsed_seconds"] > 0 else 0.0
             print(
                 f"seed={r['seed']} score={r['score']} max_tile={r['max_tile']} "
                 f"moves={r['moves']} seconds={r['elapsed_seconds']:.3f} "
-                f"moves_per_sec={mps:.2f}"
+                f"moves_per_sec={mps:.2f} avg_depth={r['avg_depth']:.2f}"
             )
 
     scores = [r["score"] for r in results]
@@ -82,6 +87,12 @@ def main() -> None:
     print(f"total moves: {total_moves}")
     overall_mps = total_moves / total_time if total_time > 0 else 0.0
     print(f"overall moves per second: {overall_mps:.2f}")
+    # average depth across all moves (move-weighted)
+    if total_moves:
+        weighted = sum(r["avg_depth"] * r["moves"] for r in results) / total_moves
+    else:
+        weighted = 0.0
+    print(f"average depth reached: {weighted:.2f}")
 
 
 if __name__ == "__main__":

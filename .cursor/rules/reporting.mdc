@@ -27,3 +27,14 @@ NEXT: what you think the next step is, one line, or "unclear"
 - Never summarize or truncate error messages; paste them in full
 - Never claim a test passed without having actually run it
 - This block goes at the very end, after any other explanation
+
+## Long-running commands
+
+Never run a command you expect to take longer than 60 seconds. This includes
+benchmark runs, full game simulations, and anything looping over many games.
+Write the file, then tell me the exact command to run myself and stop.
+
+If a command you did start exceeds 60 seconds, kill it and report that it
+was killed rather than continuing to wait.
+
+Exception: package installs and playwright install chromium may run long.

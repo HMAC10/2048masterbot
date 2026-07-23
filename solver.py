@@ -1,20 +1,24 @@
-"""Expectimax solver for the 2048 bitboard. Imports board.py only."""
+"""Expectimax solver with time-budgeted iterative deepening."""
 from __future__ import annotations
 
-from board import (
-    count_empty,
-    empty_positions,
-    evaluate,
-    move,
-    set_cell,
-)
+import time
+
+from board import empty_positions, evaluate, move, set_cell
 
 PROB_CUTOFF = 0.0001
-DEPTH_SHALLOW = 3
-DEPTH_MID = 4
-DEPTH_DEEP = 5
+DEFAULT_BUDGET_MS = 200
+MAX_DEPTH = 8
+NODE_CAP = 2_000_000
 
 _tt: dict[tuple[int, int], float] = {}
+_nodes = 0
+_deadline = 0.0
+_node_cap = NODE_CAP
+last_depth = 0
+
+
+class SearchAborted(Exception):
+    pass
 
 
 def _max_node(board: int, depth: int, cprob: float) -> float:
@@ -30,6 +34,13 @@ def _max_node(board: int, depth: int, cprob: float) -> float:
 
 
 def _chance_node(board: int, depth: int, cprob: float) -> float:
+    global _nodes
+    _nodes += 1
+    if _nodes > _node_cap:
+        raise SearchAborted
+    if (_nodes & 4095) == 0 and time.perf_counter() >= _deadline:
+        raise SearchAborted
+
     key = (board, depth)
     if key in _tt:
         return _tt[key]
@@ -56,26 +67,51 @@ def _chance_node(board: int, depth: int, cprob: float) -> float:
     return val
 
 
-def best_move(board: int) -> int:
-    global _tt
-    _tt = {}
+def best_move(
+    board: int,
+    budget_ms: int = DEFAULT_BUDGET_MS,
+    max_depth: int = MAX_DEPTH,
+) -> int:
+    global _tt, _nodes, _deadline, _node_cap, last_depth
 
-    empties = count_empty(board)
-    if empties >= 8:
-        depth = DEPTH_SHALLOW
-    elif empties >= 4:
-        depth = DEPTH_MID
-    else:
-        depth = DEPTH_DEEP
-
-    best_d = -1
-    best_v = None
+    legal: list[tuple[int, int]] = []
     for d in range(4):
         new_board, _ = move(board, d)
-        if new_board == board:
-            continue
-        v = _chance_node(new_board, depth, 1.0)
-        if best_v is None or v > best_v:
-            best_v = v
-            best_d = d
-    return best_d
+        if new_board != board:
+            legal.append((d, new_board))
+    if not legal:
+        last_depth = 0
+        return -1
+
+    _tt = {}
+    last_depth = 0
+    best = -1
+    t0 = time.perf_counter()
+    deadline = t0 + budget_ms / 1000.0
+
+    for depth in range(2, max_depth + 1):
+        _nodes = 0
+        if depth == 2:
+            _deadline = float("inf")
+            _node_cap = 10**18
+        else:
+            _deadline = deadline
+            _node_cap = NODE_CAP
+
+        try:
+            best_v = None
+            best_d = -1
+            for d, new_board in legal:
+                v = _chance_node(new_board, depth, 1.0)
+                if best_v is None or v > best_v:
+                    best_v = v
+                    best_d = d
+            best = best_d
+            last_depth = depth
+        except SearchAborted:
+            break
+
+        if time.perf_counter() >= deadline:
+            break
+
+    return best
