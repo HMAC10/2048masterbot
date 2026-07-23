@@ -6,18 +6,27 @@ import statistics
 import time
 
 import solver
-from board import max_tile
+from board import max_tile, to_string
 from browser import Game
 from solver import best_move
 
 
-def play_one(game: Game, max_moves: int, quiet: bool, budget_ms: int) -> dict:
+def play_one(
+    game: Game,
+    max_moves: int,
+    quiet: bool,
+    budget_ms: int,
+    manual_ok: bool,
+) -> dict:
     game.reset()
     score = 0
     moves = 0
     stalls = 0
     depth_sum = 0
     final_board = 0
+    win_overlay = False
+    win_route = None
+    overlay_handled = False
     t0 = time.perf_counter()
 
     while moves < max_moves:
@@ -35,8 +44,15 @@ def play_one(game: Game, max_moves: int, quiet: bool, budget_ms: int) -> dict:
         final_board = state["board"]
         score = state["score"]
 
-        if state["won"] and not state["keepPlaying"]:
-            game.dismiss_win()
+        # Overlay fires once; localStorage keepPlaying often stays false after dismiss
+        if state["won"] and not state["keepPlaying"] and not overlay_handled:
+            win_overlay = True
+            ok = game.dismiss_win(manual_ok=manual_ok)
+            win_route = game.dismiss_route
+            if not ok:
+                break
+            overlay_handled = True
+            continue
 
         d = best_move(state["board"], budget_ms=budget_ms)
         if d == -1:
@@ -75,42 +91,15 @@ def play_one(game: Game, max_moves: int, quiet: bool, budget_ms: int) -> dict:
         "moves_per_sec": mps,
         "stalls": stalls,
         "avg_depth": avg_depth,
+        "win_overlay": win_overlay,
+        "win_route": win_route,
+        "board": final_board,
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Live 2048 expectimax driver")
-    parser.add_argument("--games", type=int, default=1)
-    parser.add_argument("--headless", action="store_true")
-    parser.add_argument("--max-moves", type=int, default=5000)
-    parser.add_argument("--budget-ms", type=int, default=200)
-    parser.add_argument("--quiet", action="store_true")
-    args = parser.parse_args()
-
-    game = None
-    results = []
-    try:
-        game = Game(headless=args.headless)
-        for i in range(args.games):
-            if not args.quiet:
-                print(f"=== game {i + 1}/{args.games} ===")
-            r = play_one(game, args.max_moves, args.quiet, args.budget_ms)
-            results.append(r)
-            print(
-                f"final score={r['score']} max_tile={r['max_tile']} "
-                f"moves={r['moves']} elapsed={r['elapsed']:.3f} "
-                f"moves_per_sec={r['moves_per_sec']:.2f} stalls={r['stalls']} "
-                f"avg_depth={r['avg_depth']:.2f}"
-            )
-    except KeyboardInterrupt:
-        print("interrupted")
-    finally:
-        if game is not None:
-            game.close()
-
+def print_summary(results: list[dict]) -> None:
     if not results:
         return
-
     scores = [r["score"] for r in results]
     max_tiles = [r["max_tile"] for r in results]
     dist: dict[int, int] = {}
@@ -127,6 +116,61 @@ def main() -> None:
     print(f"best score: {max(scores)}")
     avg_depths = [r["avg_depth"] for r in results]
     print(f"average depth reached: {statistics.mean(avg_depths):.2f}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Live 2048 expectimax driver")
+    parser.add_argument("--games", type=int, default=1)
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--max-moves", type=int, default=5000)
+    parser.add_argument("--budget-ms", type=int, default=200)
+    parser.add_argument("--no-manual", action="store_true")
+    parser.add_argument("--keep-open", action="store_true")
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args()
+
+    keep_open = args.keep_open
+    if args.keep_open and args.headless:
+        print("note: --keep-open ignored with --headless")
+        keep_open = False
+
+    game = None
+    results: list[dict] = []
+    try:
+        game = Game(headless=args.headless)
+        for i in range(args.games):
+            if not args.quiet:
+                print(f"=== game {i + 1}/{args.games} ===")
+            r = play_one(
+                game,
+                args.max_moves,
+                args.quiet,
+                args.budget_ms,
+                manual_ok=not args.no_manual,
+            )
+            results.append(r)
+            print(
+                f"final score={r['score']} max_tile={r['max_tile']} "
+                f"moves={r['moves']} elapsed={r['elapsed']:.3f} "
+                f"moves_per_sec={r['moves_per_sec']:.2f} stalls={r['stalls']} "
+                f"avg_depth={r['avg_depth']:.2f} "
+                f"win_overlay={r['win_overlay']} win_route={r['win_route']}"
+            )
+            print("final board")
+            print(to_string(r["board"]))
+        print_summary(results)
+        if keep_open:
+            print("Browser left open. Press Enter to close.")
+            input()
+    except KeyboardInterrupt:
+        print("interrupted")
+        print_summary(results)
+        if keep_open:
+            print("Browser left open. Press Enter to close.")
+            input()
+    finally:
+        if game is not None:
+            game.close()
 
 
 if __name__ == "__main__":

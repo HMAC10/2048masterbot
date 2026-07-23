@@ -38,3 +38,13 @@ If a command you did start exceeds 60 seconds, kill it and report that it
 was killed rather than continuing to wait.
 
 Exception: package installs and playwright install chromium may run long.
+
+## Windows console encoding
+
+This is Windows with a cp1252 console. Never print raw text scraped from a
+webpage directly. Wrap it with .encode('ascii', 'replace').decode() or use
+repr(). Emoji and non-latin characters will crash the script with a
+'charmap' codec error otherwise.
+
+Any script that prints scraped page content must apply the above encoding
+guard at the point of printing, not rely on the caller to do it.
