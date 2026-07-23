@@ -11,7 +11,19 @@ from board import is_game_over, max_tile, move, spawn_tile
 from solver import best_move
 
 
-def play_one_game(seed: int, budget_ms: int) -> dict:
+def play_one_game(
+    seed: int,
+    budget_ms: int,
+    game_index: int,
+    games_total: int,
+    progress: int,
+    announce: bool,
+) -> dict:
+    if announce:
+        print(
+            f"=== game {game_index}/{games_total} seed={seed} budget_ms={budget_ms} ===",
+            flush=True,
+        )
     rng = random.Random(seed)
     board = 0
     board = spawn_tile(board, rng)
@@ -29,6 +41,16 @@ def play_one_game(seed: int, budget_ms: int) -> dict:
         score += gained
         moves += 1
         board = spawn_tile(board, rng)
+        if progress and moves % progress == 0:
+            elapsed = time.perf_counter() - t0
+            avg_depth = depth_sum / moves
+            mps = moves / elapsed if elapsed > 0 else 0.0
+            print(
+                f"game={game_index} moves={moves} score={score} "
+                f"max_tile={max_tile(board)} avg_depth={avg_depth:.2f} "
+                f"elapsed={elapsed:.1f}s moves_per_sec={mps:.2f}",
+                flush=True,
+            )
         if is_game_over(board):
             break
     elapsed = time.perf_counter() - t0
@@ -47,19 +69,30 @@ def main() -> None:
     parser.add_argument("--games", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--budget-ms", type=int, default=200)
+    parser.add_argument("--progress", type=int, default=100)
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
+    progress = 0 if args.quiet else args.progress
+
     results = []
     for i in range(args.games):
-        r = play_one_game(args.seed + i, args.budget_ms)
+        r = play_one_game(
+            args.seed + i,
+            args.budget_ms,
+            game_index=i + 1,
+            games_total=args.games,
+            progress=progress,
+            announce=not args.quiet,
+        )
         results.append(r)
         if not args.quiet:
             mps = r["moves"] / r["elapsed_seconds"] if r["elapsed_seconds"] > 0 else 0.0
             print(
                 f"seed={r['seed']} score={r['score']} max_tile={r['max_tile']} "
                 f"moves={r['moves']} seconds={r['elapsed_seconds']:.3f} "
-                f"moves_per_sec={mps:.2f} avg_depth={r['avg_depth']:.2f}"
+                f"moves_per_sec={mps:.2f} avg_depth={r['avg_depth']:.2f}",
+                flush=True,
             )
 
     scores = [r["score"] for r in results]
