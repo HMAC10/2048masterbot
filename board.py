@@ -99,12 +99,17 @@ _build_heur()
 
 
 def evaluate(board: int) -> float:
+    heur = HEUR
     total = 0.0
-    for r in range(4):
-        total += HEUR[_get_row(board, r)]
+    total += heur[(board >> 48) & 0xFFFF]
+    total += heur[(board >> 32) & 0xFFFF]
+    total += heur[(board >> 16) & 0xFFFF]
+    total += heur[board & 0xFFFF]
     t = transpose(board)
-    for r in range(4):
-        total += HEUR[_get_row(t, r)]
+    total += heur[(t >> 48) & 0xFFFF]
+    total += heur[(t >> 32) & 0xFFFF]
+    total += heur[(t >> 16) & 0xFFFF]
+    total += heur[t & 0xFFFF]
     return total
 
 
@@ -131,11 +136,15 @@ def set_cell(board: int, index: int, value: int) -> int:
 
 
 def transpose(board: int) -> int:
-    out = 0
-    for r in range(4):
-        for c in range(4):
-            out = set_cell(out, c * 4 + r, get_cell(board, r * 4 + c))
-    return out
+    # Bit-parallel nibble transpose for layout (r,c) at bit 60-(r*16+c*4).
+    a1 = board & 0xF0F00F0FF0F00F0F
+    a2 = board & 0x0000F0F00000F0F0
+    a3 = board & 0x0F0F00000F0F0000
+    a = a1 | (a2 << 12) | (a3 >> 12)
+    b1 = a & 0xFF00FF0000FF00FF
+    b2 = a & 0x00FF00FF00000000
+    b3 = a & 0x00000000FF00FF00
+    return b1 | (b2 >> 24) | (b3 << 24)
 
 
 def move(board: int, direction: int) -> tuple[int, int]:
@@ -145,15 +154,22 @@ def move(board: int, direction: int) -> tuple[int, int]:
         return transpose(nt), sc
     score = 0
     new_board = 0
-    for r in range(4):
-        row = _get_row(board, r)
-        if direction == 3:  # left
-            score += SCORE[row]
-            new_board = _set_row(new_board, r, ROW_LEFT[row])
-        else:  # right
-            rev = _pack(_unpack(row)[::-1])
-            score += SCORE[rev]
-            new_board = _set_row(new_board, r, ROW_RIGHT[row])
+    rl = ROW_LEFT
+    rr = ROW_RIGHT
+    sc_t = SCORE
+    pack = _pack
+    unpack = _unpack
+    if direction == 3:  # left
+        for s in (48, 32, 16, 0):
+            row = (board >> s) & 0xFFFF
+            score += sc_t[row]
+            new_board |= rl[row] << s
+    else:  # right
+        for s in (48, 32, 16, 0):
+            row = (board >> s) & 0xFFFF
+            rev = pack(unpack(row)[::-1])
+            score += sc_t[rev]
+            new_board |= rr[row] << s
     if new_board == board:
         return board, 0
     return new_board, score

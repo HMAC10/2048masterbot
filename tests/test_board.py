@@ -89,6 +89,23 @@ def test_transpose_involution():
         assert transpose(transpose(b)) == b
 
 
+def test_transpose_matches_naive():
+    rng = random.Random(42)
+
+    def naive_transpose(board: int) -> int:
+        out = 0
+        for r in range(4):
+            for c in range(4):
+                out = set_cell(out, c * 4 + r, get_cell(board, r * 4 + c))
+        return out
+
+    for _ in range(5000):
+        b = 0
+        for i in range(16):
+            b = set_cell(b, i, rng.randrange(16))
+        assert transpose(b) == naive_transpose(b)
+
+
 def test_move_matches_naive():
     rng = random.Random(3)
     for _ in range(2000):
